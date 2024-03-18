@@ -4,6 +4,8 @@ import io
 import re
 from langdetect import detect
 import string
+from fastapi.middleware.cors import CORSMiddleware
+
 
 
 # Possible sections in a scientific paper
@@ -69,11 +71,11 @@ def categorize_phrases(text: str):
     return categories
 
 
-# Function to get the reading time of the pdf
+# Function to get the reading time of the pdf - IN MINUTES
 def get_reading_time(text: str):
     # Total words / 200 = number of minutes
     print("Number of words", len(text.split(" ")))
-    return round(len(text.split(" ")) / 200)
+    return len(text.split(" ")) / 200
 
 # Function to get the percentage of a section
 def get_section_percentage(section_text: str, complete_text: str):    
@@ -142,6 +144,24 @@ async def read_pdf(file):
 
 app = FastAPI()
 
+origins = ["*"]
+
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Definicao do idioma
+# Definicao do formato = input
+# Identificacao das secoes
+# Tamanho de cada secao com relacao ao tamanho do doc
+# Tempo de leitura
+# Categorizacao de frases
+
 @app.post("/uploadfile/")
 async def create_upload_file(file: UploadFile = File(...)):
     # if the file format is not a pdf
@@ -154,28 +174,35 @@ async def create_upload_file(file: UploadFile = File(...)):
     # here we extract the sections from the pdf
     sections = extract_sections(text_data["complete_text"], section_patterns)
     
-    # Example where we can get the percentage of an section
-    # abstract_percentage = get_section_percentage(sections["abstract"], text_data["complete_text"])
-
+    # Calculate percentage for each section
     percentage = {}
     for section, text in sections.items():
         percentage[section] = get_section_percentage(text, text_data["complete_text"])
 
-
     reading_time = get_reading_time(text_data["complete_text"])
-
-
     categorized_phrases = categorize_phrases(text_data["complete_text"])
+
+    # Constructing the sections_data array
+    sections_data = []
+    for section, text in sections.items():
+        section_data = {
+            "name": section,
+            "text": text,
+            "percentage": percentage.get(section, 0),
+            "reading_time": get_reading_time(text),
+            "categorized_phrases": categorize_phrases(text),
+            "words_count": len(text.split(" "))
+        }
+        sections_data.append(section_data)
 
     # Here we are returning all the data we got from the pdf
     return {
         "filename": file.filename,
-        "content": text_data["complete_text"],
         "language": text_data["language"],
-        "sections": sections,
-        "percentage": percentage,
+        "sections_data": sections_data, 
         "reading_time": reading_time,
-        "categorized_phrases": categorized_phrases
+        "categorized_phrases": categorized_phrases,
+        "words_count": len(text_data["complete_text"].split(" "))
     }
 
 
